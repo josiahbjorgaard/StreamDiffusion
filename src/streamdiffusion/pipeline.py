@@ -300,19 +300,19 @@ class StreamDiffusion:
     ) -> torch.Tensor:
         # Debug inputs to scheduler step
         try:
-            print(f"[SDXL DEBUG] scheduler_step_batch input: shape={x_t_latent_batch.shape}, dtype={x_t_latent_batch.dtype}")
-            print(f"[SDXL DEBUG] model_pred: shape={model_pred_batch.shape}, min={model_pred_batch.min().item():.4f}, max={model_pred_batch.max().item():.4f}")
+            logger.debug(f"[SDXL DEBUG] scheduler_step_batch input: shape={x_t_latent_batch.shape}, dtype={x_t_latent_batch.dtype}")
+            logger.debug(f"[SDXL DEBUG] model_pred: shape={model_pred_batch.shape}, min={model_pred_batch.min().item():.4f}, max={model_pred_batch.max().item():.4f}")
             
             # Check for NaNs in inputs
             if torch.isnan(model_pred_batch).any() or torch.isinf(model_pred_batch).any():
-                print(f"[SDXL DEBUG] WARNING: model_pred contains {torch.isnan(model_pred_batch).sum().item()} NaN values")
+                logger.debug(f"[SDXL DEBUG] WARNING: model_pred contains {torch.isnan(model_pred_batch).sum().item()} NaN values")
                 model_pred_batch = torch.nan_to_num(model_pred_batch, nan=0.0, posinf=1.0, neginf=-1.0)
                 
             if torch.isnan(x_t_latent_batch).any() or torch.isinf(x_t_latent_batch).any():
-                print(f"[SDXL DEBUG] WARNING: x_t_latent_batch contains {torch.isnan(x_t_latent_batch).sum().item()} NaN values")
+                logger.debug(f"[SDXL DEBUG] WARNING: x_t_latent_batch contains {torch.isnan(x_t_latent_batch).sum().item()} NaN values")
                 x_t_latent_batch = torch.nan_to_num(x_t_latent_batch, nan=0.0, posinf=1.0, neginf=-1.0)
         except Exception as e:
-            print(f"[SDXL DEBUG] Error checking scheduler inputs: {e}")
+            logger.debug(f"[SDXL DEBUG] Error checking scheduler inputs: {e}")
             
         # TODO: use t_list to select beta_prod_t_sqrt
         try:
@@ -331,13 +331,13 @@ class StreamDiffusion:
                 
             # Check for NaNs in output
             if torch.isnan(denoised_batch).any() or torch.isinf(denoised_batch).any():
-                print(f"[SDXL DEBUG] WARNING: scheduler output contains {torch.isnan(denoised_batch).sum().item()} NaN and {torch.isinf(denoised_batch).sum().item()} inf values")
+                logger.debug(f"[SDXL DEBUG] WARNING: scheduler output contains {torch.isnan(denoised_batch).sum().item()} NaN and {torch.isinf(denoised_batch).sum().item()} inf values")
                 denoised_batch = torch.nan_to_num(denoised_batch, nan=0.0, posinf=1.0, neginf=-1.0)
                 
-            print(f"[SDXL DEBUG] scheduler output: min={denoised_batch.min().item():.4f}, max={denoised_batch.max().item():.4f}, mean={denoised_batch.mean().item():.4f}")
+            logger.debug(f"[SDXL DEBUG] scheduler output: min={denoised_batch.min().item():.4f}, max={denoised_batch.max().item():.4f}, mean={denoised_batch.mean().item():.4f}")
             return denoised_batch
         except Exception as e:
-            print(f"[SDXL DEBUG] Error in scheduler calculation: {e}")
+            logger.debug(f"[SDXL DEBUG] Error in scheduler calculation: {e}")
             raise
 
     def unet_step(
@@ -348,14 +348,14 @@ class StreamDiffusion:
         idx: Optional[int] = None, 
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         # Debug input latent
-        print(f"[SDXL DEBUG] unet_step input: shape={x_t_latent.shape}, dtype={x_t_latent.dtype}, t_indices={t_list}")
+        logger.debug(f"[SDXL DEBUG] unet_step input: shape={x_t_latent.shape}, dtype={x_t_latent.dtype}, t_indices={t_list}")
         try:
-            print(f"[SDXL DEBUG] unet_step input range: min={x_t_latent.min().item():.4f}, max={x_t_latent.max().item():.4f}, mean={x_t_latent.mean().item():.4f}")
+            logger.debug(f"[SDXL DEBUG] unet_step input range: min={x_t_latent.min().item():.4f}, max={x_t_latent.max().item():.4f}, mean={x_t_latent.mean().item():.4f}")
             if torch.isnan(x_t_latent).any() or torch.isinf(x_t_latent).any():
-                print(f"[SDXL DEBUG] WARNING: Input to UNet contains {torch.isnan(x_t_latent).sum().item()} NaN and {torch.isinf(x_t_latent).sum().item()} inf values")
+                logger.debug(f"[SDXL DEBUG] WARNING: Input to UNet contains {torch.isnan(x_t_latent).sum().item()} NaN and {torch.isinf(x_t_latent).sum().item()} inf values")
                 x_t_latent = torch.nan_to_num(x_t_latent, nan=0.0, posinf=1.0, neginf=-1.0)
         except Exception as e:
-            print(f"[SDXL DEBUG] Error checking UNet input: {e}")
+            logger.debug(f"[SDXL DEBUG] Error checking UNet input: {e}")
         
         # Prepare inputs based on CFG type
         if self.guidance_scale > 1.0 and (self.cfg_type == "initialize"):
@@ -368,7 +368,7 @@ class StreamDiffusion:
             x_t_latent_plus_uc = x_t_latent
 
         # Run UNet prediction
-        print(f"[SDXL DEBUG] Running UNet with input shape={x_t_latent_plus_uc.shape}, timesteps={t_list}")
+        logger.debug(f"[SDXL DEBUG] Running UNet with input shape={x_t_latent_plus_uc.shape}, timesteps={t_list}")
         try:
             model_pred = self.unet(
                 x_t_latent_plus_uc,
@@ -379,13 +379,13 @@ class StreamDiffusion:
             )[0]
             
             # Check UNet output
-            print(f"[SDXL DEBUG] UNet output: shape={model_pred.shape}, dtype={model_pred.dtype}")
-            print(f"[SDXL DEBUG] UNet output range: min={model_pred.min().item():.4f}, max={model_pred.max().item():.4f}, mean={model_pred.mean().item():.4f}")
+            logger.debug(f"[SDXL DEBUG] UNet output: shape={model_pred.shape}, dtype={model_pred.dtype}")
+            logger.debug(f"[SDXL DEBUG] UNet output range: min={model_pred.min().item():.4f}, max={model_pred.max().item():.4f}, mean={model_pred.mean().item():.4f}")
             if torch.isnan(model_pred).any() or torch.isinf(model_pred).any():
-                print(f"[SDXL DEBUG] WARNING: UNet output contains {torch.isnan(model_pred).sum().item()} NaN and {torch.isinf(model_pred).sum().item()} inf values")
+                logger.debug(f"[SDXL DEBUG] WARNING: UNet output contains {torch.isnan(model_pred).sum().item()} NaN and {torch.isinf(model_pred).sum().item()} inf values")
                 model_pred = torch.nan_to_num(model_pred, nan=0.0, posinf=1.0, neginf=-1.0)
         except Exception as e:
-            print(f"[SDXL DEBUG] Error in UNet prediction: {e}")
+            logger.debug(f"[SDXL DEBUG] Error in UNet prediction: {e}")
             raise
         if self.guidance_scale > 1.0 and (self.cfg_type == "initialize"):
             noise_pred_text = model_pred[1:]
