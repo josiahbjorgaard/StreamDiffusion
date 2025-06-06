@@ -294,21 +294,47 @@ class StreamDiffusion:
         x_t_latent_batch: torch.Tensor,
         idx: Optional[int] = None,
     ) -> torch.Tensor:
+        # Debug inputs to scheduler step
+        try:
+            print(f"[SDXL DEBUG] scheduler_step_batch input: shape={x_t_latent_batch.shape}, dtype={x_t_latent_batch.dtype}")
+            print(f"[SDXL DEBUG] model_pred: shape={model_pred_batch.shape}, min={model_pred_batch.min().item():.4f}, max={model_pred_batch.max().item():.4f}")
+            
+            # Check for NaNs in inputs
+            if torch.isnan(model_pred_batch).any() or torch.isinf(model_pred_batch).any():
+                print(f"[SDXL DEBUG] WARNING: model_pred contains {torch.isnan(model_pred_batch).sum().item()} NaN values")
+                model_pred_batch = torch.nan_to_num(model_pred_batch, nan=0.0, posinf=1.0, neginf=-1.0)
+                
+            if torch.isnan(x_t_latent_batch).any() or torch.isinf(x_t_latent_batch).any():
+                print(f"[SDXL DEBUG] WARNING: x_t_latent_batch contains {torch.isnan(x_t_latent_batch).sum().item()} NaN values")
+                x_t_latent_batch = torch.nan_to_num(x_t_latent_batch, nan=0.0, posinf=1.0, neginf=-1.0)
+        except Exception as e:
+            print(f"[SDXL DEBUG] Error checking scheduler inputs: {e}")
+            
         # TODO: use t_list to select beta_prod_t_sqrt
-        if idx is None:
-            F_theta = (
-                x_t_latent_batch - self.beta_prod_t_sqrt * model_pred_batch
-            ) / self.alpha_prod_t_sqrt
-            denoised_batch = self.c_out * F_theta + self.c_skip * x_t_latent_batch
-        else:
-            F_theta = (
-                x_t_latent_batch - self.beta_prod_t_sqrt[idx] * model_pred_batch
-            ) / self.alpha_prod_t_sqrt[idx]
-            denoised_batch = (
-                self.c_out[idx] * F_theta + self.c_skip[idx] * x_t_latent_batch
-            )
-
-        return denoised_batch
+        try:
+            if idx is None:
+                F_theta = (
+                    x_t_latent_batch - self.beta_prod_t_sqrt * model_pred_batch
+                ) / self.alpha_prod_t_sqrt
+                denoised_batch = self.c_out * F_theta + self.c_skip * x_t_latent_batch
+            else:
+                F_theta = (
+                    x_t_latent_batch - self.beta_prod_t_sqrt[idx] * model_pred_batch
+                ) / self.alpha_prod_t_sqrt[idx]
+                denoised_batch = (
+                    self.c_out[idx] * F_theta + self.c_skip[idx] * x_t_latent_batch
+                )
+                
+            # Check for NaNs in output
+            if torch.isnan(denoised_batch).any() or torch.isinf(denoised_batch).any():
+                print(f"[SDXL DEBUG] WARNING: scheduler output contains {torch.isnan(denoised_batch).sum().item()} NaN and {torch.isinf(denoised_batch).sum().item()} inf values")
+                denoised_batch = torch.nan_to_num(denoised_batch, nan=0.0, posinf=1.0, neginf=-1.0)
+                
+            print(f"[SDXL DEBUG] scheduler output: min={denoised_batch.min().item():.4f}, max={denoised_batch.max().item():.4f}, mean={denoised_batch.mean().item():.4f}")
+            return denoised_batch
+        except Exception as e:
+            print(f"[SDXL DEBUG] Error in scheduler calculation: {e}")
+            raise
 
     def unet_step(
         self,
@@ -317,6 +343,17 @@ class StreamDiffusion:
         added_cond_kwargs, 
         idx: Optional[int] = None, 
     ) -> Tuple[torch.Tensor, torch.Tensor]:
+        # Debug input latent
+        print(f"[SDXL DEBUG] unet_step input: shape={x_t_latent.shape}, dtype={x_t_latent.dtype}, t_indices={t_list}")
+        try:
+            print(f"[SDXL DEBUG] unet_step input range: min={x_t_latent.min().item():.4f}, max={x_t_latent.max().item():.4f}, mean={x_t_latent.mean().item():.4f}")
+            if torch.isnan(x_t_latent).any() or torch.isinf(x_t_latent).any():
+                print(f"[SDXL DEBUG] WARNING: Input to UNet contains {torch.isnan(x_t_latent).sum().item()} NaN and {torch.isinf(x_t_latent).sum().item()} inf values")
+                x_t_latent = torch.nan_to_num(x_t_latent, nan=0.0, posinf=1.0, neginf=-1.0)
+        except Exception as e:
+            print(f"[SDXL DEBUG] Error checking UNet input: {e}")
+        
+        # Prepare inputs based on CFG type
         if self.guidance_scale > 1.0 and (self.cfg_type == "initialize"):
             x_t_latent_plus_uc = torch.concat([x_t_latent[0:1], x_t_latent], dim=0)
             t_list = torch.concat([t_list[0:1], t_list], dim=0)
@@ -326,13 +363,26 @@ class StreamDiffusion:
         else:
             x_t_latent_plus_uc = x_t_latent
 
-        model_pred = self.unet(
-            x_t_latent_plus_uc,
-            t_list,
-            encoder_hidden_states=self.prompt_embeds,
-            added_cond_kwargs=added_cond_kwargs,
-            return_dict=False,
-        )[0]
+        # Run UNet prediction
+        print(f"[SDXL DEBUG] Running UNet with input shape={x_t_latent_plus_uc.shape}, timesteps={t_list}")
+        try:
+            model_pred = self.unet(
+                x_t_latent_plus_uc,
+                t_list,
+                encoder_hidden_states=self.prompt_embeds,
+                added_cond_kwargs=added_cond_kwargs,
+                return_dict=False,
+            )[0]
+            
+            # Check UNet output
+            print(f"[SDXL DEBUG] UNet output: shape={model_pred.shape}, dtype={model_pred.dtype}")
+            print(f"[SDXL DEBUG] UNet output range: min={model_pred.min().item():.4f}, max={model_pred.max().item():.4f}, mean={model_pred.mean().item():.4f}")
+            if torch.isnan(model_pred).any() or torch.isinf(model_pred).any():
+                print(f"[SDXL DEBUG] WARNING: UNet output contains {torch.isnan(model_pred).sum().item()} NaN and {torch.isinf(model_pred).sum().item()} inf values")
+                model_pred = torch.nan_to_num(model_pred, nan=0.0, posinf=1.0, neginf=-1.0)
+        except Exception as e:
+            print(f"[SDXL DEBUG] Error in UNet prediction: {e}")
+            raise
         if self.guidance_scale > 1.0 and (self.cfg_type == "initialize"):
             noise_pred_text = model_pred[1:]
             self.stock_noise = torch.concat(
@@ -400,38 +450,25 @@ class StreamDiffusion:
             raise ValueError(
                 f"Model expects an added time embedding vector of length {expected_add_embed_dim}, but a vector of {passed_add_embed_dim} was created. The model has an incorrect config. Please check `unet.config.time_embedding_type` and `text_encoder_2.config.projection_dim`."
             )
+            delta_x = alpha_next * delta_x
+            beta_next = torch.concat(
+                [
+                    self.beta_prod_t_sqrt[1:],
+                    torch.ones_like(self.beta_prod_t_sqrt[0:1]),
+                ],
+                dim=0,
+            )
+            delta_x = delta_x / beta_next
+            init_noise = torch.concat(
+                [self.init_noise[1:], self.init_noise[0:1]], dim=0
+            )
+            self.stock_noise = init_noise + delta_x
 
-        add_time_ids = torch.tensor([add_time_ids], dtype=dtype)
-        return add_time_ids
+    else:
+        # denoised_batch = self.scheduler.step(model_pred, t_list[0], x_t_latent).denoised
+        denoised_batch = self.scheduler_step_batch(model_pred, x_t_latent, idx)
 
-    def encode_image(self, image: torch.Tensor) -> torch.Tensor:
-        print(f"[SDXL DEBUG] encode_image input: shape={image.shape}, dtype={image.dtype}, range=[{image.min().item():.4f}, {image.max().item():.4f}], mean={image.mean().item():.4f}")
-        image = image.to(device=self.device, dtype=self.dtype)
-        
-        # Check for NaNs in input image
-        if torch.isnan(image).any():
-            print(f"[SDXL DEBUG] WARNING: Input image contains {torch.isnan(image).sum().item()} NaN values")
-            image = torch.nan_to_num(image, nan=0.0)
-        
-        if self.vae_dtype != self.dtype:
-            image = image.to(self.vae_dtype)
-            print(f"[SDXL DEBUG] Converted to VAE dtype={image.dtype}")
-            
-        # VAE encode
-        try:
-            latent = self.vae.encode(image).latent_dist.sample(generator=self.generator)
-            latent = self.vae.config.scaling_factor * latent
-            
-            # Check for NaNs in latent
-            if torch.isnan(latent).any():
-                print(f"[SDXL DEBUG] WARNING: VAE encoder output contains {torch.isnan(latent).sum().item()} NaN values")
-                latent = torch.nan_to_num(latent, nan=0.0)
-                
-            if latent.dtype != self.dtype:
-                latent = latent.to(self.dtype)
-                
-            print(f"[SDXL DEBUG] encode_image output latent: shape={latent.shape}, dtype={latent.dtype}, range=[{latent.min().item():.4f}, {latent.max().item():.4f}], mean={latent.mean().item():.4f}")
-            return latent
+    return denoised_batch, model_pred
 
 def _get_add_time_ids(
     self, original_size, crops_coords_top_left, target_size, dtype, text_encoder_projection_dim=None
@@ -464,8 +501,8 @@ def encode_image(self, image: torch.Tensor) -> torch.Tensor:
         image = image.to(self.vae_dtype)
         print(f"[SDXL DEBUG] Converted to VAE dtype={image.dtype}")
         
-    # VAE encode
     try:
+        # VAE encode
         latent = self.vae.encode(image).latent_dist.sample(generator=self.generator)
         latent = self.vae.config.scaling_factor * latent
         
@@ -479,7 +516,6 @@ def encode_image(self, image: torch.Tensor) -> torch.Tensor:
             
         print(f"[SDXL DEBUG] encode_image output latent: shape={latent.shape}, dtype={latent.dtype}, range=[{latent.min().item():.4f}, {latent.max().item():.4f}], mean={latent.mean().item():.4f}")
         return latent
-        
     except Exception as e:
         print(f"[SDXL DEBUG] Error in VAE encoding: {e}")
         raise
