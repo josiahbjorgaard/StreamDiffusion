@@ -1,4 +1,5 @@
 import time
+import logging
 from typing import List, Optional, Union, Any, Dict, Tuple, Literal
 
 import numpy as np
@@ -11,6 +12,9 @@ from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img impo
 )
 
 from streamdiffusion.image_filter import SimilarImageFilter
+
+# Configure logger
+logger = logging.getLogger(__name__)
 
 class StreamDiffusion:
     def __init__(
@@ -455,53 +459,53 @@ class StreamDiffusion:
         return add_time_ids
 
     def encode_image(self, image: torch.Tensor) -> torch.Tensor:
-        print(f"[SDXL DEBUG] encode_image input: shape={image.shape}, dtype={image.dtype}, range=[{image.min().item():.4f}, {image.max().item():.4f}], mean={image.mean().item():.4f}")
+        logger.debug(f"encode_image input: shape={image.shape}, dtype={image.dtype}, range=[{image.min().item():.4f}, {image.max().item():.4f}], mean={image.mean().item():.4f}")
         
         # First convert to device with model's default dtype
         image = image.to(device=self.device, dtype=self.dtype)
         
         # Check for NaNs in input image
         if torch.isnan(image).any():
-            print(f"[SDXL DEBUG] WARNING: Input image contains {torch.isnan(image).sum().item()} NaN values")
+            logger.debug(f"WARNING: Input image contains {torch.isnan(image).sum().item()} NaN values")
             image = torch.nan_to_num(image, nan=0.0)
         
         # ALWAYS use FP32 for VAE operations to prevent NaN issues
         # Regardless of the model's overall dtype (self.dtype)
         image = image.to(torch.float32)
-        print(f"[SDXL DEBUG] Converted input to float32 for VAE encoding to prevent NaNs, dtype={image.dtype}")
+        logger.debug(f"Converted input to float32 for VAE encoding to prevent NaNs, dtype={image.dtype}")
             
         try:
             # VAE encode
             latent = self.vae.encode(image).latent_dist.sample(generator=self.generator)
             latent = self.vae.config.scaling_factor * latent
             
-            # Check for NaNs in latent
+            # Check for NaNs in VAE output
             if torch.isnan(latent).any():
-                print(f"[SDXL DEBUG] WARNING: VAE encoder output contains {torch.isnan(latent).sum().item()} NaN values")
+                logger.debug(f"WARNING: VAE encoder output contains {torch.isnan(latent).sum().item()} NaN values")
                 latent = torch.nan_to_num(latent, nan=0.0)
                 
+            # Convert back to model's dtype if needed
             if latent.dtype != self.dtype:
                 latent = latent.to(self.dtype)
-                
-            print(f"[SDXL DEBUG] encode_image output latent: shape={latent.shape}, dtype={latent.dtype}, range=[{latent.min().item():.4f}, {latent.max().item():.4f}], mean={latent.mean().item():.4f}")
+            logger.debug(f"encode_image output latent: shape={latent.shape}, dtype={latent.dtype}, range=[{latent.min().item():.4f}, {latent.max().item():.4f}], mean={latent.mean().item():.4f}")
             return latent
         except Exception as e:
-            print(f"[SDXL DEBUG] Error in VAE encoding: {e}")
+            logger.debug(f"Error in VAE encoding: {e}")
             raise
 
     def decode_image(self, x_0_pred_out: torch.Tensor) -> torch.Tensor:    
         # Log input latent before VAE decode
-        print(f"[SDXL DEBUG] decode_image input latent: shape={x_0_pred_out.shape}, dtype={x_0_pred_out.dtype}, range=[{x_0_pred_out.min().item():.4f}, {x_0_pred_out.max().item():.4f}], mean={x_0_pred_out.mean().item():.4f}")
+        logger.debug(f"decode_image input latent: shape={x_0_pred_out.shape}, dtype={x_0_pred_out.dtype}, range=[{x_0_pred_out.min().item():.4f}, {x_0_pred_out.max().item():.4f}], mean={x_0_pred_out.mean().item():.4f}")
         
         # Check for NaNs in input latent
         if torch.isnan(x_0_pred_out).any() or torch.isinf(x_0_pred_out).any():
-            print(f"[SDXL DEBUG] WARNING: Input latent to decoder contains {torch.isnan(x_0_pred_out).sum().item()} NaN values and {torch.isinf(x_0_pred_out).sum().item()} inf values")
+            logger.debug(f"WARNING: Input latent to decoder contains {torch.isnan(x_0_pred_out).sum().item()} NaN values and {torch.isinf(x_0_pred_out).sum().item()} inf values")
             x_0_pred_out = torch.nan_to_num(x_0_pred_out, nan=0.0, posinf=1.0, neginf=-1.0)
         
         try:
             # ALWAYS use FP32 for VAE operations to prevent NaN issues
             x_0_pred_out = x_0_pred_out.to(torch.float32)
-            print(f"[SDXL DEBUG] Converted latent to float32 for VAE decoding to prevent NaNs, dtype={x_0_pred_out.dtype}")
+            logger.debug(f"Converted latent to float32 for VAE decoding to prevent NaNs, dtype={x_0_pred_out.dtype}")
             
             # Scale and decode
             scaled_latent = x_0_pred_out / self.vae.config.scaling_factor
@@ -512,14 +516,14 @@ class StreamDiffusion:
             
             # Check for NaNs in output image
             if torch.isnan(output_latent).any() or torch.isinf(output_latent).any():
-                print(f"[SDXL DEBUG] WARNING: VAE decoder output contains {torch.isnan(output_latent).sum().item()} NaN values and {torch.isinf(output_latent).sum().item()} inf values")
+                logger.debug(f"WARNING: VAE decoder output contains {torch.isnan(output_latent).sum().item()} NaN values and {torch.isinf(output_latent).sum().item()} inf values")
                 output_latent = torch.nan_to_num(output_latent, nan=0.0, posinf=1.0, neginf=-1.0)
                 
-            print(f"[SDXL DEBUG] decode_image output: shape={output_latent.shape}, dtype={output_latent.dtype}, range=[{output_latent.min().item():.4f}, {output_latent.max().item():.4f}], mean={output_latent.mean().item():.4f}")
+            logger.debug(f"decode_image output: shape={output_latent.shape}, dtype={output_latent.dtype}, range=[{output_latent.min().item():.4f}, {output_latent.max().item():.4f}], mean={output_latent.mean().item():.4f}")
             return output_latent
             
         except Exception as e:
-            print(f"[SDXL DEBUG] Error in VAE decoding: {e}")
+            logger.debug(f"Error in VAE decoding: {e}")
             raise
 
     def predict_x0_batch(self, x_t_latent: torch.Tensor) -> torch.Tensor:
@@ -528,8 +532,7 @@ class StreamDiffusion:
         if self.use_denoising_batch:
             t_list = self.sub_timesteps_tensor
             if self.denoising_steps_num > 1:
-                x_t_latent = torch.cat((x_t_latent, prev_latent_batch), dim=0)
-                self.stock_noise = torch.cat(
+                x_t_latent = torch.cat((x_t_latent, prev_latent_batch), dim=0)                self.stock_noise = torch.cat(
                     (self.init_noise[0:1], self.stock_noise[:-1]), dim=0
                 )
             if self.sdxl:
