@@ -609,6 +609,7 @@ class StreamDiffusion:
             x_t_latent = self.encode_image(x)
         else:
             # TODO: check the dimension of x_t_latent
+            print("batch_size:", self.batch_size)
             x_t_latent = torch.randn((self.batch_size, 4, self.latent_height, self.latent_width)).to(
                 device=self.device, dtype=self.dtype
             )
