@@ -521,56 +521,38 @@ class StreamDiffusion:
                     self.x_t_latent_buffer = (
                         self.alpha_prod_t_sqrt[1:] * x_0_pred_batch[:-1]
                         + self.beta_prod_t_sqrt[1:] * self.init_noise[1:]
-                if self.denoising_steps_num > 1:
-                    x_t_latent = torch.cat((x_t_latent, prev_latent_batch), dim=0)
-                    self.stock_noise = torch.cat(
-                        (self.init_noise[0:1], self.stock_noise[:-1]), dim=0
                     )
+                else:
+                    self.x_t_latent_buffer = (
+                        self.alpha_prod_t_sqrt[1:] * x_0_pred_batch[:-1]
+                    )
+            else:
+                x_0_pred_out = x_0_pred_batch
+                self.x_t_latent_buffer = None
+        else:
+            self.init_noise = x_t_latent
+            for idx, t in enumerate(self.sub_timesteps_tensor):
+                t = t.view(
+                    1,
+                ).repeat(
+                    self.frame_bff_size,
+                )
                 if self.sdxl:
                     added_cond_kwargs = {"text_embeds": self.add_text_embeds.to(self.device), "time_ids": self.add_time_ids.to(self.device)}
-
-                x_t_latent = x_t_latent.to(self.device)
-                t_list = t_list.to(self.device)
-                x_0_pred_batch, model_pred = self.unet_step(x_t_latent, t_list, added_cond_kwargs=added_cond_kwargs)
-                
-                if self.denoising_steps_num > 1:
-                    x_0_pred_out = x_0_pred_batch[-1].unsqueeze(0)
+                x_0_pred, model_pred = self.unet_step(x_t_latent, t, idx=idx, added_cond_kwargs=added_cond_kwargs)
+                if idx < len(self.sub_timesteps_tensor) - 1:
                     if self.do_add_noise:
-                        self.x_t_latent_buffer = (
-                            self.alpha_prod_t_sqrt[1:] * x_0_pred_batch[:-1]
-                            + self.beta_prod_t_sqrt[1:] * self.init_noise[1:]
+                        x_t_latent = self.alpha_prod_t_sqrt[
+                            idx + 1
+                        ] * x_0_pred + self.beta_prod_t_sqrt[
+                            idx + 1
+                        ] * torch.randn_like(
+                            x_0_pred, device=self.device, dtype=self.dtype
                         )
                     else:
-                        self.x_t_latent_buffer = (
-                            self.alpha_prod_t_sqrt[1:] * x_0_pred_batch[:-1]
-                        )
-                else:
-                    x_0_pred_out = x_0_pred_batch
-                    self.x_t_latent_buffer = None
-            else:
-                self.init_noise = x_t_latent
-                for idx, t in enumerate(self.sub_timesteps_tensor):
-                    t = t.view(
-                        1,
-                    ).repeat(
-                        self.frame_bff_size,
-                    )
-                    if self.sdxl:
-                        added_cond_kwargs = {"text_embeds": self.add_text_embeds.to(self.device), "time_ids": self.add_time_ids.to(self.device)}
-                    x_0_pred, model_pred = self.unet_step(x_t_latent, t, idx=idx, added_cond_kwargs=added_cond_kwargs)
-                    if idx < len(self.sub_timesteps_tensor) - 1:
-                        if self.do_add_noise:
-                            x_t_latent = self.alpha_prod_t_sqrt[
-                                idx + 1
-                            ] * x_0_pred + self.beta_prod_t_sqrt[
-                                idx + 1
-                            ] * torch.randn_like(
-                                x_0_pred, device=self.device, dtype=self.dtype
-                            )
-                        else:
-                            x_t_latent = self.alpha_prod_t_sqrt[idx + 1] * x_0_pred
-                x_0_pred_out = x_0_pred
-            return x_0_pred_out
+                        x_t_latent = self.alpha_prod_t_sqrt[idx + 1] * x_0_pred
+            x_0_pred_out = x_0_pred
+        return x_0_pred_out
 
     @torch.no_grad()
     def __call__(
