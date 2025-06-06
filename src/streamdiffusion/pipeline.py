@@ -463,8 +463,10 @@ class StreamDiffusion:
             print(f"[SDXL DEBUG] WARNING: Input image contains {torch.isnan(image).sum().item()} NaN values")
             image = torch.nan_to_num(image, nan=0.0)
         
-        if self.vae_dtype != self.dtype:
-            image = image.to(self.vae_dtype)
+        # Check if vae is using a different precision than unet
+        vae_dtype = getattr(self, 'vae_dtype', self.dtype)  # Use self.dtype as default if vae_dtype is missing
+        if vae_dtype != self.dtype:
+            image = image.to(vae_dtype)
             print(f"[SDXL DEBUG] Converted to VAE dtype={image.dtype}")
             
         try:
