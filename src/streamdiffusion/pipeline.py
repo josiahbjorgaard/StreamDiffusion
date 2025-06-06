@@ -456,6 +456,8 @@ class StreamDiffusion:
 
     def encode_image(self, image: torch.Tensor) -> torch.Tensor:
         print(f"[SDXL DEBUG] encode_image input: shape={image.shape}, dtype={image.dtype}, range=[{image.min().item():.4f}, {image.max().item():.4f}], mean={image.mean().item():.4f}")
+        
+        # First convert to device with model's default dtype
         image = image.to(device=self.device, dtype=self.dtype)
         
         # Check for NaNs in input image
@@ -463,11 +465,10 @@ class StreamDiffusion:
             print(f"[SDXL DEBUG] WARNING: Input image contains {torch.isnan(image).sum().item()} NaN values")
             image = torch.nan_to_num(image, nan=0.0)
         
-        # Check if vae is using a different precision than unet
-        vae_dtype = getattr(self, 'vae_dtype', self.dtype)  # Use self.dtype as default if vae_dtype is missing
-        if vae_dtype != self.dtype:
-            image = image.to(vae_dtype)
-            print(f"[SDXL DEBUG] Converted to VAE dtype={image.dtype}")
+        # ALWAYS use FP32 for VAE operations to prevent NaN issues
+        # Regardless of the model's overall dtype (self.dtype)
+        image = image.to(torch.float32)
+        print(f"[SDXL DEBUG] Converted input to float32 for VAE encoding to prevent NaNs, dtype={image.dtype}")
             
         try:
             # VAE encode
