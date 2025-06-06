@@ -170,6 +170,7 @@ class StreamDiffusion:
             do_classifier_free_guidance=do_classifier_free_guidance,
             negative_prompt=negative_prompt,
         )
+        print(encoder_output[0])
         self.prompt_embeds = encoder_output[0].repeat(self.batch_size, 1, 1)
 
         if self.sdxl:
@@ -608,9 +609,10 @@ class StreamDiffusion:
             x_t_latent = self.encode_image(x)
         else:
             # TODO: check the dimension of x_t_latent
-            x_t_latent = torch.randn((1, 4, self.latent_height, self.latent_width)).to(
+            x_t_latent = torch.randn((self.batch_size, 4, self.latent_height, self.latent_width)).to(
                 device=self.device, dtype=self.dtype
             )
+            print("x_t_latent shape:", x_t_latent.shape)
         x_0_pred_out = self.predict_x0_batch(x_t_latent)
         x_output = self.decode_image(x_0_pred_out).detach().clone()
 
