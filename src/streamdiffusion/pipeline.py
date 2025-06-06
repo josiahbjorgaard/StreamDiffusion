@@ -541,6 +541,8 @@ class StreamDiffusion:
 
             x_t_latent = x_t_latent.to(self.device)
             t_list = t_list.to(self.device)
+            print("x_t_latent shape:", x_t_latent.shape)
+            print("t_list shape:", t_list.shape)
             x_0_pred_batch, model_pred = self.unet_step(x_t_latent, t_list, added_cond_kwargs=added_cond_kwargs)
             
             if self.denoising_steps_num > 1:
