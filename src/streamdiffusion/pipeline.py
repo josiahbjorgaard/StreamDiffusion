@@ -197,10 +197,14 @@ class StreamDiffusion:
             self.prompt_embeds = torch.cat(
                 [uncond_prompt_embeds, self.prompt_embeds], dim=0
             )
-
+        print("prompt_embeds shape:", self.prompt_embeds.shape)
         self.scheduler.set_timesteps(num_inference_steps, self.device)
         self.timesteps = self.scheduler.timesteps.to(self.device)
 
+        print("timesteps shape:", self.timesteps.shape)
+        print("t_list shape:", self.t_list.shape)
+        print(self.timesteps)
+        print(self.t_list)
         # make sub timesteps list based on the indices in the t_list list and the values in the timesteps list
         self.sub_timesteps = []
         for t in self.t_list:
