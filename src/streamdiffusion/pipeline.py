@@ -499,6 +499,10 @@ class StreamDiffusion:
             x_0_pred_out = torch.nan_to_num(x_0_pred_out, nan=0.0, posinf=1.0, neginf=-1.0)
         
         try:
+            # ALWAYS use FP32 for VAE operations to prevent NaN issues
+            x_0_pred_out = x_0_pred_out.to(torch.float32)
+            print(f"[SDXL DEBUG] Converted latent to float32 for VAE decoding to prevent NaNs, dtype={x_0_pred_out.dtype}")
+            
             # Scale and decode
             scaled_latent = x_0_pred_out / self.vae.config.scaling_factor
             output_latent = self.vae.decode(
