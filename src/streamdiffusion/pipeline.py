@@ -436,142 +436,73 @@ class StreamDiffusion:
 
         return denoised_batch, model_pred
 
-    def _get_add_time_ids(
-        self, original_size, crops_coords_top_left, target_size, dtype, text_encoder_projection_dim=None
-    ):
-        add_time_ids = list(original_size + crops_coords_top_left + target_size)
 
-        passed_add_embed_dim = (
-            self.unet.config.addition_time_embed_dim * len(add_time_ids) + text_encoder_projection_dim
-        )
-        expected_add_embed_dim = self.unet.add_embedding.linear_1.in_features
-
-        if expected_add_embed_dim != passed_add_embed_dim:
-            raise ValueError(
-                f"Model expects an added time embedding vector of length {expected_add_embed_dim}, but a vector of {passed_add_embed_dim} was created. The model has an incorrect config. Please check `unet.config.time_embedding_type` and `text_encoder_2.config.projection_dim`."
-            )
-            delta_x = alpha_next * delta_x
-            beta_next = torch.concat(
-                [
-                    self.beta_prod_t_sqrt[1:],
-                    torch.ones_like(self.beta_prod_t_sqrt[0:1]),
-                ],
-                dim=0,
-            )
-            delta_x = delta_x / beta_next
-            init_noise = torch.concat(
-                [self.init_noise[1:], self.init_noise[0:1]], dim=0
-            )
-            self.stock_noise = init_noise + delta_x
-
-    else:
-        # denoised_batch = self.scheduler.step(model_pred, t_list[0], x_t_latent).denoised
-        denoised_batch = self.scheduler_step_batch(model_pred, x_t_latent, idx)
-
-    return denoised_batch, model_pred
-
-def _get_add_time_ids(
-    self, original_size, crops_coords_top_left, target_size, dtype, text_encoder_projection_dim=None
-):
-    add_time_ids = list(original_size + crops_coords_top_left + target_size)
-
-    passed_add_embed_dim = (
-        self.unet.config.addition_time_embed_dim * len(add_time_ids) + text_encoder_projection_dim
-    )
-    expected_add_embed_dim = self.unet.add_embedding.linear_1.in_features
-
-    if expected_add_embed_dim != passed_add_embed_dim:
-        raise ValueError(
-            f"Model expects an added time embedding vector of length {expected_add_embed_dim}, but a vector of {passed_add_embed_dim} was created. The model has an incorrect config. Please check `unet.config.time_embedding_type` and `text_encoder_2.config.projection_dim`."
-        )
-
-    add_time_ids = torch.tensor([add_time_ids], dtype=dtype)
-    return add_time_ids
-
-def encode_image(self, image: torch.Tensor) -> torch.Tensor:
-    print(f"[SDXL DEBUG] encode_image input: shape={image.shape}, dtype={image.dtype}, range=[{image.min().item():.4f}, {image.max().item():.4f}], mean={image.mean().item():.4f}")
-    image = image.to(device=self.device, dtype=self.dtype)
-    
-    # Check for NaNs in input image
-    if torch.isnan(image).any():
-        print(f"[SDXL DEBUG] WARNING: Input image contains {torch.isnan(image).sum().item()} NaN values")
-        image = torch.nan_to_num(image, nan=0.0)
-    
-    if self.vae_dtype != self.dtype:
-        image = image.to(self.vae_dtype)
-        print(f"[SDXL DEBUG] Converted to VAE dtype={image.dtype}")
+    def encode_image(self, image: torch.Tensor) -> torch.Tensor:
+        print(f"[SDXL DEBUG] encode_image input: shape={image.shape}, dtype={image.dtype}, range=[{image.min().item():.4f}, {image.max().item():.4f}], mean={image.mean().item():.4f}")
+        image = image.to(device=self.device, dtype=self.dtype)
         
-    try:
-        # VAE encode
-        latent = self.vae.encode(image).latent_dist.sample(generator=self.generator)
-        latent = self.vae.config.scaling_factor * latent
+        # Check for NaNs in input image
+        if torch.isnan(image).any():
+            print(f"[SDXL DEBUG] WARNING: Input image contains {torch.isnan(image).sum().item()} NaN values")
+            image = torch.nan_to_num(image, nan=0.0)
         
-        # Check for NaNs in latent
-        if torch.isnan(latent).any():
-            print(f"[SDXL DEBUG] WARNING: VAE encoder output contains {torch.isnan(latent).sum().item()} NaN values")
-            latent = torch.nan_to_num(latent, nan=0.0)
+        if self.vae_dtype != self.dtype:
+            image = image.to(self.vae_dtype)
+            print(f"[SDXL DEBUG] Converted to VAE dtype={image.dtype}")
             
-        if latent.dtype != self.dtype:
-            latent = latent.to(self.dtype)
+        try:
+            # VAE encode
+            latent = self.vae.encode(image).latent_dist.sample(generator=self.generator)
+            latent = self.vae.config.scaling_factor * latent
             
-        print(f"[SDXL DEBUG] encode_image output latent: shape={latent.shape}, dtype={latent.dtype}, range=[{latent.min().item():.4f}, {latent.max().item():.4f}], mean={latent.mean().item():.4f}")
-        return latent
-    except Exception as e:
-        print(f"[SDXL DEBUG] Error in VAE encoding: {e}")
-        raise
+            # Check for NaNs in latent
+            if torch.isnan(latent).any():
+                print(f"[SDXL DEBUG] WARNING: VAE encoder output contains {torch.isnan(latent).sum().item()} NaN values")
+                latent = torch.nan_to_num(latent, nan=0.0)
+                
+            if latent.dtype != self.dtype:
+                latent = latent.to(self.dtype)
+                
+            print(f"[SDXL DEBUG] encode_image output latent: shape={latent.shape}, dtype={latent.dtype}, range=[{latent.min().item():.4f}, {latent.max().item():.4f}], mean={latent.mean().item():.4f}")
+            return latent
+        except Exception as e:
+            print(f"[SDXL DEBUG] Error in VAE encoding: {e}")
+            raise
 
-def decode_image(self, x_0_pred_out: torch.Tensor) -> torch.Tensor:    
-    # Log input latent before VAE decode
-    print(f"[SDXL DEBUG] decode_image input latent: shape={x_0_pred_out.shape}, dtype={x_0_pred_out.dtype}, range=[{x_0_pred_out.min().item():.4f}, {x_0_pred_out.max().item():.4f}], mean={x_0_pred_out.mean().item():.4f}")
-    
-    # Check for NaNs in input latent
-    if torch.isnan(x_0_pred_out).any() or torch.isinf(x_0_pred_out).any():
-        print(f"[SDXL DEBUG] WARNING: Input latent to decoder contains {torch.isnan(x_0_pred_out).sum().item()} NaN values and {torch.isinf(x_0_pred_out).sum().item()} inf values")
-        x_0_pred_out = torch.nan_to_num(x_0_pred_out, nan=0.0, posinf=1.0, neginf=-1.0)
-    
-    try:
-        # Scale and decode
-        scaled_latent = x_0_pred_out / self.vae.config.scaling_factor
-        output_latent = self.vae.decode(
-            scaled_latent,
-            return_dict=False,
-        )[0]
+    def decode_image(self, x_0_pred_out: torch.Tensor) -> torch.Tensor:    
+        # Log input latent before VAE decode
+        print(f"[SDXL DEBUG] decode_image input latent: shape={x_0_pred_out.shape}, dtype={x_0_pred_out.dtype}, range=[{x_0_pred_out.min().item():.4f}, {x_0_pred_out.max().item():.4f}], mean={x_0_pred_out.mean().item():.4f}")
         
-        # Check for NaNs in output image
-        if torch.isnan(output_latent).any() or torch.isinf(output_latent).any():
-            print(f"[SDXL DEBUG] WARNING: VAE decoder output contains {torch.isnan(output_latent).sum().item()} NaN values and {torch.isinf(output_latent).sum().item()} inf values")
-            output_latent = torch.nan_to_num(output_latent, nan=0.0, posinf=1.0, neginf=-1.0)
+        # Check for NaNs in input latent
+        if torch.isnan(x_0_pred_out).any() or torch.isinf(x_0_pred_out).any():
+            print(f"[SDXL DEBUG] WARNING: Input latent to decoder contains {torch.isnan(x_0_pred_out).sum().item()} NaN values and {torch.isinf(x_0_pred_out).sum().item()} inf values")
+            x_0_pred_out = torch.nan_to_num(x_0_pred_out, nan=0.0, posinf=1.0, neginf=-1.0)
+        
+        try:
+            # Scale and decode
+            scaled_latent = x_0_pred_out / self.vae.config.scaling_factor
+            output_latent = self.vae.decode(
+                scaled_latent,
+                return_dict=False,
+            )[0]
             
-        print(f"[SDXL DEBUG] decode_image output: shape={output_latent.shape}, dtype={output_latent.dtype}, range=[{output_latent.min().item():.4f}, {output_latent.max().item():.4f}], mean={output_latent.mean().item():.4f}")
-        return output_latent
-        
-    except Exception as e:
-        print(f"[SDXL DEBUG] Error in VAE decoding: {e}")
-        raise
+            # Check for NaNs in output image
+            if torch.isnan(output_latent).any() or torch.isinf(output_latent).any():
+                print(f"[SDXL DEBUG] WARNING: VAE decoder output contains {torch.isnan(output_latent).sum().item()} NaN values and {torch.isinf(output_latent).sum().item()} inf values")
+                output_latent = torch.nan_to_num(output_latent, nan=0.0, posinf=1.0, neginf=-1.0)
+                
+            print(f"[SDXL DEBUG] decode_image output: shape={output_latent.shape}, dtype={output_latent.dtype}, range=[{output_latent.min().item():.4f}, {output_latent.max().item():.4f}], mean={output_latent.mean().item():.4f}")
+            return output_latent
+            
+        except Exception as e:
+            print(f"[SDXL DEBUG] Error in VAE decoding: {e}")
+            raise
 
-def predict_x0_batch(self, x_t_latent: torch.Tensor) -> torch.Tensor:
-    added_cond_kwargs = {}
-    prev_latent_batch = self.x_t_latent_buffer
-    if self.use_denoising_batch:
-        t_list = self.sub_timesteps_tensor
-        if self.denoising_steps_num > 1:
-            x_t_latent = torch.cat((x_t_latent, prev_latent_batch), dim=0)
-            self.stock_noise = torch.cat(
-                (self.init_noise[0:1], self.stock_noise[:-1]), dim=0
-            )
-        if self.sdxl:
-            added_cond_kwargs = {"text_embeds": self.add_text_embeds.to(self.device), "time_ids": self.add_time_ids.to(self.device)}
-
-        x_t_latent = x_t_latent.to(self.device)
-        t_list = t_list.to(self.device)
-        x_0_pred_batch, model_pred = self.unet_step(x_t_latent, t_list, added_cond_kwargs=added_cond_kwargs)
-        
-        if self.denoising_steps_num > 1:
-            x_0_pred_out = x_0_pred_batch[-1].unsqueeze(0)
-            if self.do_add_noise:
-                self.x_t_latent_buffer = (
-                    self.alpha_prod_t_sqrt[1:] * x_0_pred_batch[:-1]
-                    + self.beta_prod_t_sqrt[1:] * self.init_noise[1:]
+    def predict_x0_batch(self, x_t_latent: torch.Tensor) -> torch.Tensor:
+        added_cond_kwargs = {}
+        prev_latent_batch = self.x_t_latent_buffer
+        if self.use_denoising_batch:
+            t_list = self.sub_timesteps_tensor
             if self.denoising_steps_num > 1:
                 x_t_latent = torch.cat((x_t_latent, prev_latent_batch), dim=0)
                 self.stock_noise = torch.cat(
@@ -590,38 +521,56 @@ def predict_x0_batch(self, x_t_latent: torch.Tensor) -> torch.Tensor:
                     self.x_t_latent_buffer = (
                         self.alpha_prod_t_sqrt[1:] * x_0_pred_batch[:-1]
                         + self.beta_prod_t_sqrt[1:] * self.init_noise[1:]
+                if self.denoising_steps_num > 1:
+                    x_t_latent = torch.cat((x_t_latent, prev_latent_batch), dim=0)
+                    self.stock_noise = torch.cat(
+                        (self.init_noise[0:1], self.stock_noise[:-1]), dim=0
                     )
-                else:
-                    self.x_t_latent_buffer = (
-                        self.alpha_prod_t_sqrt[1:] * x_0_pred_batch[:-1]
-                    )
-            else:
-                x_0_pred_out = x_0_pred_batch
-                self.x_t_latent_buffer = None
-        else:
-            self.init_noise = x_t_latent
-            for idx, t in enumerate(self.sub_timesteps_tensor):
-                t = t.view(
-                    1,
-                ).repeat(
-                    self.frame_bff_size,
-                )
                 if self.sdxl:
                     added_cond_kwargs = {"text_embeds": self.add_text_embeds.to(self.device), "time_ids": self.add_time_ids.to(self.device)}
-                x_0_pred, model_pred = self.unet_step(x_t_latent, t, idx=idx, added_cond_kwargs=added_cond_kwargs)
-                if idx < len(self.sub_timesteps_tensor) - 1:
+
+                x_t_latent = x_t_latent.to(self.device)
+                t_list = t_list.to(self.device)
+                x_0_pred_batch, model_pred = self.unet_step(x_t_latent, t_list, added_cond_kwargs=added_cond_kwargs)
+                
+                if self.denoising_steps_num > 1:
+                    x_0_pred_out = x_0_pred_batch[-1].unsqueeze(0)
                     if self.do_add_noise:
-                        x_t_latent = self.alpha_prod_t_sqrt[
-                            idx + 1
-                        ] * x_0_pred + self.beta_prod_t_sqrt[
-                            idx + 1
-                        ] * torch.randn_like(
-                            x_0_pred, device=self.device, dtype=self.dtype
+                        self.x_t_latent_buffer = (
+                            self.alpha_prod_t_sqrt[1:] * x_0_pred_batch[:-1]
+                            + self.beta_prod_t_sqrt[1:] * self.init_noise[1:]
                         )
                     else:
-                        x_t_latent = self.alpha_prod_t_sqrt[idx + 1] * x_0_pred
-            x_0_pred_out = x_0_pred
-        return x_0_pred_out
+                        self.x_t_latent_buffer = (
+                            self.alpha_prod_t_sqrt[1:] * x_0_pred_batch[:-1]
+                        )
+                else:
+                    x_0_pred_out = x_0_pred_batch
+                    self.x_t_latent_buffer = None
+            else:
+                self.init_noise = x_t_latent
+                for idx, t in enumerate(self.sub_timesteps_tensor):
+                    t = t.view(
+                        1,
+                    ).repeat(
+                        self.frame_bff_size,
+                    )
+                    if self.sdxl:
+                        added_cond_kwargs = {"text_embeds": self.add_text_embeds.to(self.device), "time_ids": self.add_time_ids.to(self.device)}
+                    x_0_pred, model_pred = self.unet_step(x_t_latent, t, idx=idx, added_cond_kwargs=added_cond_kwargs)
+                    if idx < len(self.sub_timesteps_tensor) - 1:
+                        if self.do_add_noise:
+                            x_t_latent = self.alpha_prod_t_sqrt[
+                                idx + 1
+                            ] * x_0_pred + self.beta_prod_t_sqrt[
+                                idx + 1
+                            ] * torch.randn_like(
+                                x_0_pred, device=self.device, dtype=self.dtype
+                            )
+                        else:
+                            x_t_latent = self.alpha_prod_t_sqrt[idx + 1] * x_0_pred
+                x_0_pred_out = x_0_pred
+            return x_0_pred_out
 
     @torch.no_grad()
     def __call__(
