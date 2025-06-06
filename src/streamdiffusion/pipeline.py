@@ -211,12 +211,13 @@ class StreamDiffusion:
         sub_timesteps_tensor = torch.tensor(
             self.sub_timesteps, dtype=torch.long, device=self.device
         )
+        print("sub_timesteps_tensor shape:", sub_timesteps_tensor.shape)
         self.sub_timesteps_tensor = torch.repeat_interleave(
             sub_timesteps_tensor,
             repeats=self.frame_bff_size if self.use_denoising_batch else 1,
             dim=0,
         )
-
+        print("sub_timesteps_tensor shape:", self.sub_timesteps_tensor.shape)
         self.init_noise = torch.randn(
             (self.batch_size, 4, self.latent_height, self.latent_width),
             generator=generator,
