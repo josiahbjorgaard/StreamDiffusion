@@ -532,6 +532,8 @@ class StreamDiffusion:
         if self.use_denoising_batch:
             t_list = self.sub_timesteps_tensor
             if self.denoising_steps_num > 1:
+                print("x_t_latent shape:", x_t_latent.shape)
+                print("prev_latent_batch shape:", prev_latent_batch.shape)
                 x_t_latent = torch.cat((x_t_latent, prev_latent_batch), dim=0)
                 self.stock_noise = torch.cat(
                     (self.init_noise[0:1], self.stock_noise[:-1]), dim=0
