@@ -536,19 +536,40 @@ class StreamDiffusion:
         if self.use_denoising_batch:
             t_list = self.sub_timesteps_tensor
             if self.denoising_steps_num > 1:
-                print("x_t_latent shape:", x_t_latent.shape)
-                print("prev_latent_batch shape:", prev_latent_batch.shape)
-                x_t_latent = torch.cat((x_t_latent, prev_latent_batch), dim=0)
+                # Debug shapes and handle potential mismatches
+                logger.debug(f"x_t_latent shape: {x_t_latent.shape}, prev_latent_batch shape: {prev_latent_batch.shape}")
+                logger.debug(f"t_list shape: {t_list.shape}")
+                
+                # Dynamically adjust buffer if needed
+                if t_list.shape[0] != x_t_latent.shape[0] + prev_latent_batch.shape[0]:
+                    logger.warning(f"Dimension mismatch! Adjusting buffer size to match timesteps.")
+                    
+                    # Calculate how many frames we need to take from prev_latent_batch
+                    needed_frames = t_list.shape[0] - x_t_latent.shape[0]
+                    if needed_frames > 0 and needed_frames <= prev_latent_batch.shape[0]:
+                        # Take just what we need from the buffer
+                        adjusted_buffer = prev_latent_batch[:needed_frames]
+                        logger.debug(f"Adjusted buffer to size {needed_frames} to match timesteps")
+                        x_t_latent = torch.cat((x_t_latent, adjusted_buffer), dim=0)
+                    else:
+                        # We need to expand the timesteps instead
+                        logger.warning(f"Cannot adjust buffer, expanding timesteps instead")
+                        # Let execution continue - UNet will try to expand timesteps
+                else:
+                    # Default concatenation behavior
+                    x_t_latent = torch.cat((x_t_latent, prev_latent_batch), dim=0)
+                
+                # Update noise stock accordingly
                 self.stock_noise = torch.cat(
                     (self.init_noise[0:1], self.stock_noise[:-1]), dim=0
                 )
+                
+                logger.debug(f"Final x_t_latent shape: {x_t_latent.shape}, t_list shape: {t_list.shape}")
             if self.sdxl:
                 added_cond_kwargs = {"text_embeds": self.add_text_embeds.to(self.device), "time_ids": self.add_time_ids.to(self.device)}
 
             x_t_latent = x_t_latent.to(self.device)
             t_list = t_list.to(self.device)
-            print("x_t_latent shape:", x_t_latent.shape)
-            print("t_list shape:", t_list.shape)
             x_0_pred_batch, model_pred = self.unet_step(x_t_latent, t_list, added_cond_kwargs=added_cond_kwargs)
             
             if self.denoising_steps_num > 1:
@@ -610,7 +631,7 @@ class StreamDiffusion:
         else:
             # TODO: check the dimension of x_t_latent
             print("batch_size:", self.batch_size)
-            x_t_latent = torch.randn((self.batch_size, 4, self.latent_height, self.latent_width)).to(
+            x_t_latent = torch.randn((1, 4, self.latent_height, self.latent_width)).to(
                 device=self.device, dtype=self.dtype
             )
             print("x_t_latent shape:", x_t_latent.shape)
@@ -635,6 +656,29 @@ class StreamDiffusion:
         return x_output
 
     def txt2img_sd_turbo(self, batch_size: int = 1) -> torch.Tensor:
+        # Calculate the proper buffer size to avoid dimension mismatch with timesteps
+        # self.sub_timesteps_tensor will have shape [len(t_list) * frame_bff_size] if use_denoising_batch
+        # So our buffer needs to be sized to ensure that when concatenated with new input [1, ...],
+        # the resulting tensor's first dimension will match sub_timesteps_tensor's length
+        if self.use_denoising_batch:
+            # Initialize with correct size to match timesteps when concatenated with input
+            expected_timesteps_len = len(self.t_list) * (self.frame_bff_size if self.use_denoising_batch else 1)
+            buffer_size = expected_timesteps_len - 1  # -1 because we'll add one new latent
+            
+            logger.debug(f"Initializing x_t_latent_buffer with size {buffer_size} to match expected timesteps length {expected_timesteps_len}")
+            
+            self.x_t_latent_buffer = torch.zeros(
+                (buffer_size, 4, self.latent_height, self.latent_width),
+                device=self.device,
+                dtype=self.dtype,
+            )
+        else:
+            # For non-denoising-batch mode, use the original sizing
+            self.x_t_latent_buffer = torch.zeros(
+                (self.denoising_steps_num - 1, 4, self.latent_height, self.latent_width),
+                device=self.device,
+                dtype=self.dtype,
+            )
         x_t_latent = torch.randn(
             (batch_size, 4, self.latent_height, self.latent_width),
             device=self.device,
