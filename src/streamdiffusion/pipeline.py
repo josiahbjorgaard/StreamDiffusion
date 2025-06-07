@@ -536,40 +536,19 @@ class StreamDiffusion:
         if self.use_denoising_batch:
             t_list = self.sub_timesteps_tensor
             if self.denoising_steps_num > 1:
-                # Debug shapes and handle potential mismatches
-                logger.debug(f"x_t_latent shape: {x_t_latent.shape}, prev_latent_batch shape: {prev_latent_batch.shape}")
-                logger.debug(f"t_list shape: {t_list.shape}")
-                
-                # Dynamically adjust buffer if needed
-                if t_list.shape[0] != x_t_latent.shape[0] + prev_latent_batch.shape[0]:
-                    logger.warning(f"Dimension mismatch! Adjusting buffer size to match timesteps.")
-                    
-                    # Calculate how many frames we need to take from prev_latent_batch
-                    needed_frames = t_list.shape[0] - x_t_latent.shape[0]
-                    if needed_frames > 0 and needed_frames <= prev_latent_batch.shape[0]:
-                        # Take just what we need from the buffer
-                        adjusted_buffer = prev_latent_batch[:needed_frames]
-                        logger.debug(f"Adjusted buffer to size {needed_frames} to match timesteps")
-                        x_t_latent = torch.cat((x_t_latent, adjusted_buffer), dim=0)
-                    else:
-                        # We need to expand the timesteps instead
-                        logger.warning(f"Cannot adjust buffer, expanding timesteps instead")
-                        # Let execution continue - UNet will try to expand timesteps
-                else:
-                    # Default concatenation behavior
-                    x_t_latent = torch.cat((x_t_latent, prev_latent_batch), dim=0)
-                
-                # Update noise stock accordingly
+                print("x_t_latent shape:", x_t_latent.shape)
+                print("prev_latent_batch shape:", prev_latent_batch.shape)
+                x_t_latent = torch.cat((x_t_latent, prev_latent_batch), dim=0)
                 self.stock_noise = torch.cat(
                     (self.init_noise[0:1], self.stock_noise[:-1]), dim=0
                 )
-                
-                logger.debug(f"Final x_t_latent shape: {x_t_latent.shape}, t_list shape: {t_list.shape}")
             if self.sdxl:
                 added_cond_kwargs = {"text_embeds": self.add_text_embeds.to(self.device), "time_ids": self.add_time_ids.to(self.device)}
 
             x_t_latent = x_t_latent.to(self.device)
             t_list = t_list.to(self.device)
+            
+
             x_0_pred_batch, model_pred = self.unet_step(x_t_latent, t_list, added_cond_kwargs=added_cond_kwargs)
             
             if self.denoising_steps_num > 1:
